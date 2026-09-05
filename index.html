@@ -1537,6 +1537,9 @@ body {
      overflow-x:hidden do proprio painel. flex-shrink:0 e essencial: como o
      link e flex, sem isso o item era espremido ate ~0 em vez de vazar. */
   .brand-caption, .studio-nav-link > span { flex-shrink: 0; }
+  /* o rotulo que vaza nao pode virar barra de rolagem horizontal: a lista
+     de navegacao vinha com overflow:auto nos dois eixos */
+  .studio-navigation { overflow-x: hidden; }
   html:not(.sidebar-expanded)
     :is(.brand-caption, .studio-nav-link > span) { width: auto; }
   .brand-divider, .brand-caption, .studio-nav-link > span {
