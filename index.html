@@ -1762,13 +1762,6 @@ body {
 html.mkt-oculto #mkt{ display:none; }
 /* o topbar tem 20px de gap; sem as cotacoes o botao encosta nas acoes */
 html.mkt-oculto .studio-topbar{ justify-content:space-between; }
-/* compacta antes de esconder -- o Brent sumia cedo demais */
-@media (max-width:1700px){ .mkt-it{ padding:0 8px; } .mkt-val{ font-size:12px; } }
-@media (max-width:1480px){ .mkt-it{ padding:0 6px; } .mkt-lbl{ font-size:8.5px; } .mkt-val{ font-size:11.5px; } }
-@media (max-width:1340px){ .mkt-it[data-k="btc"]{ display:none; } }
-@media (max-width:1220px){ .mkt-it[data-k="ouro"]{ display:none; } }
-@media (max-width:1120px){ .mkt-it[data-k="sp500"]{ display:none; } }
-@media (max-width:1020px){ #mkt, #mkt-tg{ display:none !important; } }
 </style>
 
 <script id="mercado-js">
@@ -2346,5 +2339,145 @@ button.mkt-gl::before{ content:"🌐"; margin-right:6px; font-size:13px; line-he
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', por); else por();
 })();
 </script>
+
+<style id="design3-css">
+/* ===== Topbar: nada de texto quebrando em duas linhas ==================== */
+.studio-topbar .breadcrumb, .studio-topbar .storage-dot,
+.studio-topbar .search-trigger, .studio-topbar .search-trigger span{ white-space:nowrap; }
+.studio-topbar .breadcrumb{ flex-shrink:0; }
+.studio-topbar .top-actions{ flex-shrink:0; }
+
+/* As cotacoes eram 41% da barra em 1440px e espremiam o resto. Agora a faixa
+   tem teto de largura e mostra menos itens em tela de notebook -- a ordem de
+   corte segue a importancia: Dolar, Ibovespa, S&P e Brent ficam por ultimo. */
+#mkt{ max-width:520px; }
+.mkt-it{ padding:0 10px; }
+@media (max-width:1900px){ .mkt-it[data-k="btc"]{ display:none; } }
+@media (max-width:1700px){ .mkt-it[data-k="ouro"]{ display:none; } }
+@media (max-width:1340px){ .mkt-it[data-k="brent"]{ display:none; } #mkt{ max-width:300px; } }
+@media (max-width:1160px){ .mkt-it[data-k="sp500"]{ display:none; } }
+@media (max-width:1020px){ #mkt, #mkt-tg{ display:none !important; } }
+
+/* ===== Brasil / Global: so o icone e o percentual ======================= */
+button.mkt-br .rot, button.mkt-gl .rot{ display:none; }
+
+/* ===== Perfis de carteira: um controle segmentado, nao quatro pilulas ===
+   Eram 47px de altura e 16px de fonte, soltos na linha. Viram um grupo
+   unico e compacto, com o ativo em laranja solido. */
+#perfilGrupo{
+  display:inline-flex; align-items:center; gap:3px; padding:3px;
+  border:1px solid var(--s-border); border-radius:11px;
+  background:rgba(255,255,255,.04);
+}
+#perfilGrupo button.tab{
+  min-height:0 !important; height:32px !important; padding:0 14px !important;
+  font-size:12.5px !important; font-weight:600 !important; border-radius:8px !important;
+  border:0 !important; background:transparent !important; color:var(--s-muted) !important;
+  box-shadow:none !important; transform:none !important; transition:background .15s, color .15s;
+}
+#perfilGrupo button.tab:hover{ background:rgba(255,255,255,.07) !important; color:var(--s-text) !important; }
+#perfilGrupo button.tab.active{ background:var(--s-orange) !important; color:#fff !important; font-weight:700 !important; }
+#perfilGrupo .sep{ width:1px; height:18px; background:var(--s-border); margin:0 2px; flex-shrink:0; }
+#perfilGrupo button.tab.zero{ color:var(--s-subtle) !important; }
+#perfilGrupo button.tab.zero:hover{ color:var(--s-orange) !important; }
+
+/* ===== Raio-XP generico: 38 chips com o mesmo link ======================
+   O link nao e por ativo -- e o mesmo relatorio em toda linha, inclusive em
+   CDB e LCA. Escondido ate existir o link por ativo (so renda variavel). */
+.xp-research-link{ display:none !important; }
+</style>
+<script id="design3-js">
+(function(){
+  "use strict";
+  var PERFIS=/^(Conservadora|Moderada|Sofisticada)$/, ZERO=/^\+?\s*Montar do zero$/;
+  function agrupar(){
+    var tabs=[].slice.call(document.querySelectorAll('button.tab')).filter(function(b){
+      var t=(b.textContent||'').trim(); return PERFIS.test(t)||ZERO.test(t);
+    });
+    if(tabs.length<3) return;
+    var pai=tabs[0].parentElement;
+    if(!pai || document.getElementById('perfilGrupo')) {
+      /* se o app re-renderizou, o grupo antigo fica orfao: remove e refaz */
+      var g=document.getElementById('perfilGrupo');
+      if(g && g.parentElement && document.contains(tabs[0]) && !g.contains(tabs[0])) g.remove();
+      else return;
+    }
+    var grupo=document.createElement('div');
+    grupo.id='perfilGrupo';
+    pai.insertBefore(grupo, tabs[0]);
+    tabs.forEach(function(b,i){
+      if(ZERO.test((b.textContent||'').trim())){
+        var s=document.createElement('span'); s.className='sep'; grupo.appendChild(s);
+        b.classList.add('zero');
+      }
+      grupo.appendChild(b);
+    });
+  }
+  function rotulos(){
+    document.querySelectorAll('button').forEach(function(b){
+      var t=(b.textContent||'').trim();
+      var m=/^(Brasil|Global)\s+(\d+%)$/.exec(t);
+      if(m && !b.querySelector('.rot')){
+        b.classList.add(m[1]==='Brasil'?'mkt-br':'mkt-gl');
+        b.innerHTML='<span class="rot">'+m[1]+' </span>'+m[2];   /* rotulo fica no DOM p/ leitor de tela */
+      }
+    });
+  }
+  function passe(){ try{ agrupar(); }catch(e){} try{ rotulos(); }catch(e){} }
+  setInterval(passe, 900);
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', passe); else passe();
+})();
+</script>
+
+<style id="cores-css">
+/* ===== Unificacao das superficies =======================================
+   Havia tres sistemas convivendo: cards em rgba(22,15,49,.43) (roxo, 43%),
+   gaveta e selects em branco ~6% (neutro, acompanha o fundo) e os campos de
+   texto em rgba(28,47,99,.78) -- azul e quase opaco. Por isso todo lugar
+   "onde se escreve" saltava do card em volta.
+   O sistema neutro vence porque tinge o que estiver atras em vez de impor
+   uma cor propria; entao os campos passam a usa-lo, com a mesma borda dos
+   selects e dos cards da gaveta. ===================================== */
+/* o CSS do painel usa #tool-workspace :is(...) -- o :not(#_) sobe a
+   especificidade acima dela sem mudar o alvo */
+#tool-workspace :is(input[type=text], input[type=number], textarea,
+  .pct-input, .name-input, .det-input, .mini-input, .inp,
+  .lib-search-inp, .oc-search, .proj-anos-input, .hp-inp):not(#_){
+  background:rgba(255,255,255,.065) !important;
+  border:1px solid rgba(231,220,255,.20) !important;
+  color:var(--s-text) !important;
+}
+#tool-workspace :is(input, textarea):not(#_)::placeholder{ color:rgba(231,224,255,.38) !important; }
+
+/* foco: laranja da marca, um so padrao em todo campo */
+#tool-workspace :is(input, textarea, select):focus:not(#_){
+  border-color:rgba(255,98,29,.55) !important;
+  background:rgba(255,255,255,.085) !important;
+  outline:none !important;
+}
+/* selects ja estavam no sistema neutro -- so alinha a borda */
+#tool-workspace :is(.sel, .ret-sel, select):not(#_){ border-color:rgba(231,220,255,.20) !important; }
+
+/* ===== Barra de atalhos da gaveta ======================================
+   Eu tinha inventado um fundo quase preto (12,8,33) que nao existia no
+   resto; passa a usar a propria cor da gaveta, e os chips o mesmo neutro
+   dos cards de ativo. */
+#libAtalhos{
+  background:linear-gradient(180deg, rgba(32,20,58,.97) 78%, rgba(32,20,58,0)) !important;
+}
+#libAtalhos button{
+  background:rgba(255,255,255,.055) !important;
+  border:1px solid rgba(231,220,255,.20) !important;
+  color:var(--s-muted) !important;
+}
+#libAtalhos button:hover{
+  background:rgba(255,255,255,.10) !important;
+  border-color:rgba(231,220,255,.34) !important; color:var(--s-text) !important;
+}
+#libAtalhos button.aqui{
+  background:rgba(255,98,29,.16) !important;
+  border-color:rgba(255,98,29,.55) !important; color:#fff !important;
+}
+</style>
 </body>
 </html>
