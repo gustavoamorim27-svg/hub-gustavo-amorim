@@ -2510,13 +2510,21 @@ button.mkt-br .rot, button.mkt-gl .rot{ display:none; }
   font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
   color:var(--s-subtle); margin:0 0 8px 2px; font-weight:700;
 }
+#buscaAtivos .ba-linha{ display:flex; gap:6px; margin-bottom:4px; align-items:stretch; }
 #buscaAtivos .ba-row{
-  display:flex; align-items:center; gap:10px; width:100%;
-  padding:8px 10px; margin-bottom:4px; border-radius:10px;
+  display:flex; align-items:center; gap:10px; flex:1; min-width:0;
+  padding:8px 10px; border-radius:10px; cursor:pointer;
   border:1px solid transparent; background:rgba(255,255,255,.04);
   text-align:left; color:var(--s-text); text-decoration:none;
+  font:inherit;
 }
 #buscaAtivos .ba-row:hover{ background:rgba(255,255,255,.085); border-color:var(--s-border); }
+#buscaAtivos .ba-xpbtn{
+  display:flex; align-items:center; padding:0 12px; border-radius:10px;
+  font-size:11.5px; font-weight:700; text-decoration:none; white-space:nowrap;
+  background:rgba(255,98,29,.12); border:1px solid rgba(255,98,29,.34); color:#ffb490;
+}
+#buscaAtivos .ba-xpbtn:hover{ background:rgba(255,98,29,.22); border-color:rgba(255,98,29,.6); color:#fff; }
 #buscaAtivos .ba-tick{
   font-family:var(--s-mono,monospace); font-size:11px; font-weight:700;
   padding:2px 7px; border-radius:6px; flex-shrink:0;
@@ -2728,15 +2736,61 @@ button.mkt-br .rot, button.mkt-gl .rot{ display:none; }
 
   function linhaAtivo(a){
     var url = a.rf ? null : (FUNDOS[a.t] || (ACOES[a.t] ? urlAcao(a.t) : null));
-    return '<a class="ba-row" href="#/'+a.rota+'" data-ba-rota="'+a.rota+'">'+
-      '<span class="ba-tick'+(a.rf?' rf':'')+'">'+esc(a.t)+'</span>'+
-      '<span class="ba-nome">'+esc(a.n)+'</span>'+
-      '<span class="ba-sub">'+esc(a.s)+'</span>'+
-      '</a>' +
-      (url ? '<a class="ba-row" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">'+
-        '<span class="ba-tick">XP</span>'+
-        '<span class="ba-nome">Abrir '+esc(a.t)+' no conteúdo da XP</span>'+
-        '<span class="ba-xp">↗</span></a>' : '');
+    return '<div class="ba-linha">'+
+      '<button type="button" class="ba-row" data-ba-t="'+esc(a.t)+'" '+
+        'data-ba-rv="'+(a.rf?'0':'1')+'" title="Abrir na gaveta de ativos">'+
+        '<span class="ba-tick'+(a.rf?' rf':'')+'">'+esc(a.t)+'</span>'+
+        '<span class="ba-nome">'+esc(a.n)+'</span>'+
+        '<span class="ba-sub">'+esc(a.s)+'</span>'+
+      '</button>'+
+      (url ? '<a class="ba-xpbtn" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer" '+
+        'title="Abrir '+esc(a.t)+' no conteúdo da XP">XP ↗</a>' : '')+
+      '</div>';
+  }
+
+  /* ===================================================================
+     Levar o resultado ate o ativo. Antes o clique so trocava de rota e
+     largava o assessor na tela -- agora abre a gaveta certa e ja filtra
+     pelo termo, que e o passo que ele faria na mao em seguida.
+     =================================================================== */
+  function espera(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+  function visiveis(sel){
+    return [].slice.call(document.querySelectorAll(sel))
+             .filter(function(c){ return c.offsetParent; }).length;
+  }
+  async function preencher(tabId, campoId, seletor, termo){
+    var tab=document.getElementById(tabId), campo=document.getElementById(campoId);
+    if(!tab || !campo) return -1;
+    var gaveta=campo.closest('#libDrawer, #opcat');
+    if(gaveta && !gaveta.classList.contains('open')){ tab.click(); await espera(360); }
+    campo.value=termo;
+    campo.dispatchEvent(new Event('input',{bubbles:true}));
+    await espera(320);
+    return visiveis(seletor);
+  }
+  async function abrirNaGaveta(termo, ehRV){
+    if(!/^#\/(construtor|rv)$/.test(location.hash)) location.hash='/construtor';
+    for(var i=0;i<70 && !document.getElementById('libTab');i++) await espera(120);
+    if(!document.getElementById('libTab')) return;
+    await espera(250);
+    var GERAL=['libTab','libSearch','#libDrawer .lib-card'];
+    var RVES =['catTab','ocSearch','#opcat .opcard'];
+    var primeira = ehRV ? RVES : GERAL, segunda = ehRV ? GERAL : RVES;
+    var n=await preencher(primeira[0], primeira[1], primeira[2], termo);
+    /* o ativo pode estar so na outra gaveta -- CDB nao esta na RV
+       estruturada, TUPY3 nao esta na gaveta geral */
+    var m = n===0 ? await preencher(segunda[0], segunda[1], segunda[2], termo) : n;
+    if(n<=0 && m<=0){
+      /* o ativo existe na XP mas nao esta nas gavetas do Hub -- dizer isso
+         e melhor do que deixar o assessor olhando uma gaveta vazia */
+      ['libDrawer','opcat','libBackdrop','catBackdrop'].forEach(function(k){
+        var e=document.getElementById(k); if(e) e.classList.remove('open');
+      });
+      try{ window.showToast(termo+' não está nas gavetas do Hub — use o botão XP na busca para abrir a análise.'); }catch(e){}
+      return;
+    }
+    var aberta=document.querySelector('#opcat.open, #libDrawer.open');
+    if(aberta) aberta.scrollIntoView({behavior:'smooth', block:'center'});
   }
 
   function montarBusca(dlg){
@@ -2772,8 +2826,13 @@ button.mkt-br .rot, button.mkt-gl .rot{ display:none; }
          de ativos encontrados -- some quando o ativo responde pela busca. */
       var vazio=res.querySelector('.studio-muted');
       if(vazio) vazio.style.display='none';
-      cx.querySelectorAll('[data-ba-rota]').forEach(function(a){
-        a.addEventListener('click', function(){ try{ dlg.close(); }catch(e){} });
+      cx.querySelectorAll('[data-ba-t]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var termo=b.getAttribute('data-ba-t');
+          var ehRV=b.getAttribute('data-ba-rv')==='1';
+          try{ dlg.close(); }catch(e){}
+          abrirNaGaveta(termo, ehRV);
+        });
       });
     }
     input.addEventListener('input', passe);
@@ -2791,6 +2850,32 @@ button.mkt-br .rot, button.mkt-gl .rot{ display:none; }
   }).observe(document.body, {childList:true});
   var jaAberto=document.getElementById('tool-search');
   if(jaAberto) montarBusca(jaAberto);
+})();
+</script>
+<script id="nav-js">
+(function(){
+  "use strict";
+  /* Planejamento nasce no grupo Assessoria porque a lista de ferramentas
+     vive num modulo fechado. Como a barra e montada uma vez no boot, mover
+     o link no DOM e suficiente -- e a rota #/simulador segue a mesma. */
+  function mover(){
+    var nav=document.querySelector('.studio-navigation');
+    if(!nav) return false;
+    var link=nav.querySelector('a[data-route="simulador"]');
+    if(!link) return false;
+    var patrimonio=[].slice.call(nav.querySelectorAll('.nav-group'))
+      .filter(function(g){ return /patrim/i.test(g.textContent||''); })[0];
+    if(!patrimonio) return false;
+    if(link.previousElementSibling===patrimonio) return true;   /* ja esta la */
+    patrimonio.parentNode.insertBefore(link, patrimonio.nextSibling);
+    return true;
+  }
+  var tentativas=0;
+  (function tentar(){
+    if(mover() || tentativas++>60) return;
+    setTimeout(tentar, 150);
+  })();
+  window.addEventListener('hashchange', mover);
 })();
 </script>
 </body>
