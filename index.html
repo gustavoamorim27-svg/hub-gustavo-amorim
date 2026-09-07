@@ -2120,7 +2120,32 @@ html.mkt-oculto .studio-topbar{ justify-content:space-between; }
     home.insertBefore(a, home.firstChild);
   }
 
+  /* rss2json (JSON, com CORS) antes dos proxies: em 07/09/2026 era o unico
+     caminho vivo na rede real */
+  async function viaJson(url){
+    try{
+      var ctrl=new AbortController(); var t=setTimeout(function(){ ctrl.abort(); }, 12000);
+      var r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(url),{cache:'no-store',signal:ctrl.signal});
+      clearTimeout(t);
+      if(!r.ok) return null;
+      var j=await r.json();
+      if(!j || j.status!=='ok' || !j.items) return null;
+      var achado=null;
+      j.items.forEach(function(it){
+        var link=String(it.link||''), tit=String(it.title||'').trim();
+        if(link.indexOf('conteudos.xpi.com.br')<0) return;
+        if(link.indexOf('raio-xp')<0 && !/^raio[- ]xp/i.test(tit)) return;
+        var d=new Date(String(it.pubDate||'').replace(' ','T')); if(isNaN(d)) return;
+        if(!achado || d>achado.data) achado={titulo:tit, link:link, data:d};
+      });
+      return achado;
+    }catch(e){ return null; }
+  }
   async function checar(){
+    for(var j=0;j<FEEDS.length;j++){
+      var rj=await viaJson(FEEDS[j]);
+      if(rj && (Date.now()-rj.data.getTime()) <= DIAS*86400000){ montar(rj); return rj; }
+    }
     for(var i=0;i<FEEDS.length;i++){
       var xml=await texto(FEEDS[i]);
       if(!xml) continue;
@@ -2921,20 +2946,27 @@ body.apresentando #apresentacaoFrame{
      ultima leitura boa no navegador; e, se a rede bloquear tudo, deixa o
      conteudo do build como estava (com a data dele). */
   var K_CACHE='hub:v2:noticias';
+  /* ordem = preferencia: primeiro os feeds de mercado, depois os gerais */
   var FEEDS={
     nacional:[
+      'https://www.moneytimes.com.br/feed/',
       'https://www.infomoney.com.br/mercados/feed/',
       'https://www.infomoney.com.br/feed/',
-      'https://valor.globo.com/rss/'
+      'https://g1.globo.com/rss/g1/economia/'
     ],
     internacional:[
       'https://www.cnbc.com/id/10000664/device/rss/rss.html',
-      'https://feeds.content.dowjones.io/public/rss/mw_topstories',
-      'https://finance.yahoo.com/news/rssindex'
+      'https://finance.yahoo.com/news/rssindex',
+      'https://feeds.content.dowjones.io/public/rss/mw_topstories'
     ]
   };
-  var FONTE={ 'infomoney.com.br':'InfoMoney', 'valor.globo.com':'Valor', 'cnbc.com':'CNBC',
-              'marketwatch.com':'MarketWatch', 'dowjones.io':'MarketWatch', 'yahoo.com':'Yahoo Finance' };
+  var FONTE={ 'moneytimes.com.br':'Money Times', 'infomoney.com.br':'InfoMoney', 'g1.globo.com':'g1 Economia',
+              'valor.globo.com':'Valor', 'cnbc.com':'CNBC', 'marketwatch.com':'MarketWatch',
+              'dowjones.io':'MarketWatch', 'yahoo.com':'Yahoo Finance' };
+  /* rss2json entrega o feed ja em JSON, com CORS liberado -- e o unico caminho
+     que passou na rede real em 07/09/2026 (corsproxy.io passou a exigir chave;
+     allorigins e codetabs estouram o tempo). Os proxies ficam como reserva. */
+  var RSS2JSON='https://api.rss2json.com/v1/api.json?rss_url=';
   var PROXIES=[
     function(u){ return 'https://corsproxy.io/?url='+encodeURIComponent(u); },
     function(u){ return 'https://api.allorigins.win/raw?url='+encodeURIComponent(u); },
@@ -2994,12 +3026,45 @@ body.apresentando #apresentacaoFrame{
     return saida;
   }
 
+  function itensDeJson(j, regiao){
+    var saida=[];
+    ((j&&j.items)||[]).forEach(function(it){
+      var link=String(it.link||it.guid||'');
+      var tit=limparHtml(it.title||'');
+      var desc=limparHtml(it.description||it.content||'');
+      var d=new Date(String(it.pubDate||'').replace(' ','T')+(/[zZ]|[+-]\d\d:?\d\d$/.test(String(it.pubDate||''))?'':'Z'));
+      if(isNaN(d)) d=new Date(it.pubDate||'');
+      if(!/^https?:\/\//.test(link) || !tit || isNaN(d)) return;
+      var resumo=desc;
+      var m=/^(.{60,220}?[.!?])\s/.exec(desc+' ');
+      if(m) resumo=m[1];
+      if(resumo.length>220) resumo=resumo.slice(0,217).replace(/\s+\S*$/,'')+'…';
+      saida.push({region:regiao, title:tit, resumo:resumo, source:fonteDe(link), date:dataCurta(d), ts:d.getTime(), url:link});
+    });
+    saida.sort(function(a,b){ return b.ts-a.ts; });
+    return saida;
+  }
+  async function viaJson(url, regiao){
+    try{
+      var ctrl=new AbortController(); var t=setTimeout(function(){ ctrl.abort(); }, 12000);
+      var r=await fetch(RSS2JSON+encodeURIComponent(url),{cache:'no-store',signal:ctrl.signal});
+      clearTimeout(t);
+      if(!r.ok) return [];
+      var j=await r.json();
+      if(!j || j.status!=='ok') return [];
+      return itensDeJson(j, regiao);
+    }catch(e){ return []; }
+  }
   async function primeiroFeed(lista, regiao, n){
     for(var i=0;i<lista.length;i++){
-      var xml=await baixar(lista[i]);
-      if(!xml) continue;
-      var itens=itensDe(xml, regiao);
+      var itens=await viaJson(lista[i], regiao);
       if(itens.length) return itens.slice(0,n);
+    }
+    for(var k=0;k<lista.length;k++){
+      var xml=await baixar(lista[k]);
+      if(!xml) continue;
+      var itens2=itensDe(xml, regiao);
+      if(itens2.length) return itens2.slice(0,n);
     }
     return [];
   }
