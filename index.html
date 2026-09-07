@@ -2973,6 +2973,29 @@ body.apresentando #apresentacaoFrame{
     function(u){ return 'https://api.codetabs.com/v1/proxy/?quest='+encodeURIComponent(u); }
   ];
   var MESES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  /* os feeds sao "ultimas" gerais; para "Principais noticias" de uma
+     ferramenta de investimento, quem fala de mercado sobe na fila */
+  var TEMA={
+    nacional:/ibovespa|\bbolsa\b|d[oó]lar|selic|juros|copom|\bcdi\b|petrobras|\bvale\b|mercado|renda fixa|tesouro|infla[cç][aã]o|ipca|\bfii|\bb3\b|banco central|\bfed\b|a[cç][oõ]es|fundos?|investi|câmbio|cambio|dividendo|balan[cç]o|\bcvm\b|\bxp\b|itaú|bradesco|nubank|treasur/i,
+    internacional:/\bfed\b|treasur|s&p|nasdaq|\bdow\b|wall street|stocks?|markets?|rates?|inflation|\boil\b|dollar|bonds?|earnings|nvidia|apple|microsoft|tesla|amazon|bank|yields?|recession|gdp|jobs|tariff/i
+  };
+  function pontuar(it, regiao){
+    var rx=TEMA[regiao]; if(!rx) return 0;
+    var txt=(it.title||'')+' '+(it.resumo||'');
+    var m=txt.match(new RegExp(rx.source,'gi'));
+    return m?m.length:0;
+  }
+  function ordenar(itens, regiao){
+    var agora=Date.now();
+    return itens.slice().sort(function(a,b){
+      /* mercado primeiro; dentro do mesmo grupo, mais recente primeiro.
+         noticia com mais de 3 dias so entra se nao houver outra */
+      var va=(agora-a.ts>3*86400000)?-100:0, vb=(agora-b.ts>3*86400000)?-100:0;
+      var pa=Math.min(pontuar(a,regiao),3)+va, pb=Math.min(pontuar(b,regiao),3)+vb;
+      if(pb!==pa) return pb-pa;
+      return b.ts-a.ts;
+    });
+  }
 
   function ler(){ try{ return JSON.parse(localStorage.getItem(K_CACHE)||'null'); }catch(e){ return null; } }
   function gravar(o){ try{ localStorage.setItem(K_CACHE, JSON.stringify(o)); }catch(e){} }
@@ -3058,13 +3081,13 @@ body.apresentando #apresentacaoFrame{
   async function primeiroFeed(lista, regiao, n){
     for(var i=0;i<lista.length;i++){
       var itens=await viaJson(lista[i], regiao);
-      if(itens.length) return itens.slice(0,n);
+      if(itens.length) return ordenar(itens, regiao).slice(0,n);
     }
     for(var k=0;k<lista.length;k++){
       var xml=await baixar(lista[k]);
       if(!xml) continue;
       var itens2=itensDe(xml, regiao);
-      if(itens2.length) return itens2.slice(0,n);
+      if(itens2.length) return ordenar(itens2, regiao).slice(0,n);
     }
     return [];
   }
